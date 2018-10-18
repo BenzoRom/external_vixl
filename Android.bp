@@ -143,10 +143,6 @@ art_cc_library {
         "vixl-arm64",
         "dex2oat-pgo-defaults",
     ],
-    vendor_available: true,
-    vndk: {
-        enabled: true,
-    },
     target: {
         android: {
             lto: {
