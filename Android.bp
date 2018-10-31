@@ -88,23 +88,31 @@ cc_defaults {
     },
 }
 
-cc_defaults {
+art_cc_defaults {
     name: "vixl-arm",
     defaults: ["vixl-common"],
-    cppflags: [
-        "-DVIXL_INCLUDE_TARGET_T32",
-        ],
-    srcs: ["src/aarch32/*.cc"],
+    codegen: {
+        arm: {
+            srcs: ["src/aarch32/*.cc"],
+            cppflags: [
+                "-DVIXL_INCLUDE_TARGET_T32",
+            ],
+        },
+    },
 }
 
-cc_defaults {
+art_cc_defaults {
     name: "vixl-arm64",
     defaults: ["vixl-common"],
-    cppflags: [
-        "-DVIXL_INCLUDE_SIMULATOR_AARCH64",
-        "-DVIXL_INCLUDE_TARGET_A64",
-        ],
-    srcs: ["src/aarch64/*.cc"],
+    codegen: {
+        arm64: {
+            srcs: ["src/aarch64/*.cc"],
+            cppflags: [
+                "-DVIXL_INCLUDE_SIMULATOR_AARCH64",
+                "-DVIXL_INCLUDE_TARGET_A64",
+            ],
+        }
+    },
 }
 
 cc_defaults {
@@ -127,10 +135,11 @@ cc_defaults {
     ],
 }
 
-cc_library {
-    name: "libvixl-arm64",
+art_cc_library {
+    name: "libvixl",
     defaults: [
         "vixl-release",
+        "vixl-arm",
         "vixl-arm64",
         "dex2oat-pgo-defaults",
     ],
@@ -147,34 +156,13 @@ cc_library {
     },
 }
 
-cc_library {
-    name: "libvixld-arm64",
-    defaults: ["vixl-debug", "vixl-arm64"],
-}
-
-cc_library {
-    name: "libvixl-arm",
+art_cc_library {
+    name: "libvixld",
     defaults: [
-        "vixl-release",
+        "vixl-debug",
         "vixl-arm",
-        "dex2oat-pgo-defaults",
+        "vixl-arm64",
     ],
-    vendor_available: true,
-    vndk: {
-        enabled: true,
-    },
-    target: {
-        android: {
-            lto: {
-                 thin: true,
-            },
-        },
-    },
-}
-
-cc_library {
-    name: "libvixld-arm",
-    defaults: ["vixl-debug", "vixl-arm"],
 }
 
 //######## VIXL HOST TESTS #########
