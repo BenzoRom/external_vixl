@@ -80,10 +80,6 @@ namespace aarch64 {
 #define __ masm.
 #define TEST(name) TEST_(AARCH64_ASM_##name)
 
-// PushCalleeSavedRegisters(), PopCalleeSavedRegisters() and Dump() use NEON, so
-// we need to enable it in the infrastructure code for each test.
-static const CPUFeatures kInfrastructureCPUFeatures(CPUFeatures::kNEON);
-
 #ifdef VIXL_INCLUDE_SIMULATOR_AARCH64
 // Run tests with the simulator.
 
@@ -103,14 +99,15 @@ static const CPUFeatures kInfrastructureCPUFeatures(CPUFeatures::kNEON);
 
 #define SETUP_COMMON()                                                   \
   bool queried_can_run = false;                                          \
+  bool printed_sve_lane_warning = false;                                 \
   /* Avoid unused-variable warnings in case a test never calls RUN(). */ \
   USE(queried_can_run);                                                  \
+  USE(printed_sve_lane_warning);                                         \
   masm.SetCPUFeatures(CPUFeatures::None());                              \
   masm.SetGenerateSimulatorCode(true);                                   \
   Decoder simulator_decoder;                                             \
   Simulator simulator(&simulator_decoder);                               \
   simulator.SetColouredTrace(Test::coloured_trace());                    \
-  simulator.SetInstructionStats(Test::instruction_stats());              \
   simulator.SetCPUFeatures(CPUFeatures::None());                         \
   RegisterDump core;                                                     \
   ptrdiff_t offset_after_infrastructure_start;                           \
@@ -133,9 +130,6 @@ static const CPUFeatures kInfrastructureCPUFeatures(CPUFeatures::kNEON);
       __ Trace(static_cast<TraceParameters>(trace_parameters), TRACE_ENABLE); \
     }                                                                         \
   }                                                                           \
-  if (Test::instruction_stats()) {                                            \
-    __ EnableInstrumentation();                                               \
-  }                                                                           \
   offset_after_infrastructure_start = masm.GetCursorOffset();                 \
   /* Avoid unused-variable warnings in case a test never calls RUN(). */      \
   USE(offset_after_infrastructure_start)
@@ -144,9 +138,6 @@ static const CPUFeatures kInfrastructureCPUFeatures(CPUFeatures::kNEON);
   offset_before_infrastructure_end = masm.GetCursorOffset();             \
   /* Avoid unused-variable warnings in case a test never calls RUN(). */ \
   USE(offset_before_infrastructure_end);                                 \
-  if (Test::instruction_stats()) {                                       \
-    __ DisableInstrumentation();                                         \
-  }                                                                      \
   __ Trace(LOG_ALL, TRACE_DISABLE);                                      \
   {                                                                      \
     SimulationCPUFeaturesScope cpu(&masm, kInfrastructureCPUFeatures);   \
@@ -155,14 +146,6 @@ static const CPUFeatures kInfrastructureCPUFeatures(CPUFeatures::kNEON);
   }                                                                      \
   __ Ret();                                                              \
   masm.FinalizeCode()
-
-inline bool CanRun(const CPUFeatures& required, bool* queried_can_run) {
-  // The Simulator can run any test that VIXL can assemble.
-  USE(required);
-  *queried_can_run = true;
-  return true;
-}
-
 
 #define RUN()                                                                  \
   RUN_WITHOUT_SEEN_FEATURE_CHECK();                                            \
@@ -214,8 +197,10 @@ inline bool CanRun(const CPUFeatures& required, bool* queried_can_run) {
 
 #define SETUP_COMMON()                                                   \
   bool queried_can_run = false;                                          \
+  bool printed_sve_lane_warning = false;                                 \
   /* Avoid unused-variable warnings in case a test never calls RUN(). */ \
   USE(queried_can_run);                                                  \
+  USE(printed_sve_lane_warning);                                         \
   masm.SetCPUFeatures(CPUFeatures::None());                              \
   masm.SetGenerateSimulatorCode(false);                                  \
   RegisterDump core;                                                     \
@@ -258,32 +243,6 @@ inline bool CanRun(const CPUFeatures& required, bool* queried_can_run) {
 // This just provides compatibility with VIXL_INCLUDE_SIMULATOR_AARCH64 builds.
 // We cannot run seen-feature checks when running natively.
 #define RUN_WITHOUT_SEEN_FEATURE_CHECK() RUN()
-
-inline bool CanRun(const CPUFeatures& required, bool* queried_can_run) {
-  CPUFeatures cpu = CPUFeatures::InferFromOS();
-  // If InferFromOS fails, assume that basic features are present.
-  if (cpu.HasNoFeatures()) cpu = CPUFeatures::AArch64LegacyBaseline();
-
-  VIXL_ASSERT(cpu.Has(kInfrastructureCPUFeatures));
-
-  if (cpu.Has(required)) {
-    *queried_can_run = true;
-    return true;
-  }
-
-  // Only warn if we haven't already checked CanRun(...).
-  if (!*queried_can_run) {
-    *queried_can_run = true;
-    CPUFeatures missing = required.Without(cpu);
-    // Note: This message needs to match REGEXP_MISSING_FEATURES from
-    // tools/threaded_test.py.
-    std::cout << "SKIPPED: Missing features: { " << missing << " }\n";
-    std::cout << "This test requires the following features to run its "
-                 "generated code on this CPU: "
-              << required << "\n";
-  }
-  return false;
-}
 
 #endif  // ifdef VIXL_INCLUDE_SIMULATOR_AARCH64.
 
@@ -348,6 +307,21 @@ inline bool CanRun(const CPUFeatures& required, bool* queried_can_run) {
 
 #define ASSERT_LITERAL_POOL_SIZE(expected) \
   VIXL_CHECK((expected + kInstructionSize) == (masm.GetLiteralPoolSize()))
+
+#define ASSERT_EQUAL_SVE_LANE(expected, result, lane) \
+  VIXL_CHECK(EqualSVELane(expected, &core, result, lane));
+
+// If `expected` is scalar, check that every lane of `result` matches it.
+// If `expected` is an array of N expected values, check that the first N
+// lanes on `result` match. The rightmost (highest-indexed) array element maps
+// to the lowest-numbered lane.
+#define ASSERT_EQUAL_SVE(expected, result) \
+  VIXL_CHECK(EqualSVE(expected, &core, result, &printed_sve_lane_warning))
+
+#define ASSERT_EQUAL_MEMORY(expected, result, ...)          \
+  VIXL_CHECK(EqualMemory(reinterpret_cast<void*>(expected), \
+                         reinterpret_cast<void*>(result),   \
+                         __VA_ARGS__))
 
 #define MUST_FAIL_WITH_MESSAGE(code, message)                     \
   {                                                               \

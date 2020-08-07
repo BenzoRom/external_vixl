@@ -42,8 +42,12 @@ const IDRegister::Field AA64PFR0::kAdvSIMD(20, Field::kSigned);
 const IDRegister::Field AA64PFR0::kRAS(28);
 const IDRegister::Field AA64PFR0::kSVE(32);
 const IDRegister::Field AA64PFR0::kDIT(48);
+const IDRegister::Field AA64PFR0::kCSV2(56);
+const IDRegister::Field AA64PFR0::kCSV3(60);
 
 const IDRegister::Field AA64PFR1::kBT(0);
+const IDRegister::Field AA64PFR1::kSSBS(4);
+const IDRegister::Field AA64PFR1::kMTE(8);
 
 const IDRegister::Field AA64ISAR0::kAES(4);
 const IDRegister::Field AA64ISAR0::kSHA1(8);
@@ -57,6 +61,7 @@ const IDRegister::Field AA64ISAR0::kSM4(40);
 const IDRegister::Field AA64ISAR0::kDP(44);
 const IDRegister::Field AA64ISAR0::kFHM(48);
 const IDRegister::Field AA64ISAR0::kTS(52);
+const IDRegister::Field AA64ISAR0::kRNDR(60);
 
 const IDRegister::Field AA64ISAR1::kDPB(0);
 const IDRegister::Field AA64ISAR1::kAPA(4);
@@ -67,10 +72,20 @@ const IDRegister::Field AA64ISAR1::kLRCPC(20);
 const IDRegister::Field AA64ISAR1::kGPA(24);
 const IDRegister::Field AA64ISAR1::kGPI(28);
 const IDRegister::Field AA64ISAR1::kFRINTTS(32);
+const IDRegister::Field AA64ISAR1::kSB(36);
+const IDRegister::Field AA64ISAR1::kSPECRES(40);
+const IDRegister::Field AA64ISAR1::kBF16(44);
+const IDRegister::Field AA64ISAR1::kDGH(48);
+const IDRegister::Field AA64ISAR1::kI8MM(52);
 
 const IDRegister::Field AA64MMFR1::kLO(16);
 
 const IDRegister::Field AA64MMFR2::kAT(32);
+
+const IDRegister::Field AA64ZFR0::kBF16(20);
+const IDRegister::Field AA64ZFR0::kI8MM(44);
+const IDRegister::Field AA64ZFR0::kF32MM(52);
+const IDRegister::Field AA64ZFR0::kF64MM(56);
 
 CPUFeatures AA64PFR0::GetCPUFeatures() const {
   CPUFeatures f;
@@ -81,12 +96,19 @@ CPUFeatures AA64PFR0::GetCPUFeatures() const {
   if (Get(kRAS) >= 1) f.Combine(CPUFeatures::kRAS);
   if (Get(kSVE) >= 1) f.Combine(CPUFeatures::kSVE);
   if (Get(kDIT) >= 1) f.Combine(CPUFeatures::kDIT);
+  if (Get(kCSV2) >= 1) f.Combine(CPUFeatures::kCSV2);
+  if (Get(kCSV2) >= 2) f.Combine(CPUFeatures::kSCXTNUM);
+  if (Get(kCSV3) >= 1) f.Combine(CPUFeatures::kCSV3);
   return f;
 }
 
 CPUFeatures AA64PFR1::GetCPUFeatures() const {
   CPUFeatures f;
   if (Get(kBT) >= 1) f.Combine(CPUFeatures::kBTI);
+  if (Get(kSSBS) >= 1) f.Combine(CPUFeatures::kSSBS);
+  if (Get(kSSBS) >= 2) f.Combine(CPUFeatures::kSSBSControl);
+  if (Get(kMTE) >= 1) f.Combine(CPUFeatures::kMTEInstructions);
+  if (Get(kMTE) >= 2) f.Combine(CPUFeatures::kMTE);
   return f;
 }
 
@@ -107,6 +129,7 @@ CPUFeatures AA64ISAR0::GetCPUFeatures() const {
   if (Get(kFHM) >= 1) f.Combine(CPUFeatures::kFHM);
   if (Get(kTS) >= 1) f.Combine(CPUFeatures::kFlagM);
   if (Get(kTS) >= 2) f.Combine(CPUFeatures::kAXFlag);
+  if (Get(kRNDR) >= 1) f.Combine(CPUFeatures::kRNG);
   return f;
 }
 
@@ -119,9 +142,25 @@ CPUFeatures AA64ISAR1::GetCPUFeatures() const {
   if (Get(kLRCPC) >= 1) f.Combine(CPUFeatures::kRCpc);
   if (Get(kLRCPC) >= 2) f.Combine(CPUFeatures::kRCpcImm);
   if (Get(kFRINTTS) >= 1) f.Combine(CPUFeatures::kFrintToFixedSizedInt);
+  if (Get(kSB) >= 1) f.Combine(CPUFeatures::kSB);
+  if (Get(kSPECRES) >= 1) f.Combine(CPUFeatures::kSPECRES);
+  if (Get(kBF16) >= 1) f.Combine(CPUFeatures::kBF16);
+  if (Get(kDGH) >= 1) f.Combine(CPUFeatures::kDGH);
+  if (Get(kI8MM) >= 1) f.Combine(CPUFeatures::kI8MM);
 
-  if (Get(kAPI) >= 1) f.Combine(CPUFeatures::kPAuth);
-  if (Get(kAPA) >= 1) f.Combine(CPUFeatures::kPAuth, CPUFeatures::kPAuthQARMA);
+  // Only one of these fields should be non-zero, but they have the same
+  // encodings, so merge the logic.
+  int apx = std::max(Get(kAPI), Get(kAPA));
+  if (apx >= 1) {
+    f.Combine(CPUFeatures::kPAuth);
+    // APA (rather than API) indicates QARMA.
+    if (Get(kAPA) >= 1) f.Combine(CPUFeatures::kPAuthQARMA);
+    if (apx == 0b0010) f.Combine(CPUFeatures::kPAuthEnhancedPAC);
+    if (apx >= 0b0011) f.Combine(CPUFeatures::kPAuthEnhancedPAC2);
+    if (apx >= 0b0100) f.Combine(CPUFeatures::kPAuthFPAC);
+    if (apx >= 0b0101) f.Combine(CPUFeatures::kPAuthFPACCombined);
+  }
+
   if (Get(kGPI) >= 1) f.Combine(CPUFeatures::kPAuthGeneric);
   if (Get(kGPA) >= 1) {
     f.Combine(CPUFeatures::kPAuthGeneric, CPUFeatures::kPAuthGenericQARMA);
@@ -138,6 +177,17 @@ CPUFeatures AA64MMFR1::GetCPUFeatures() const {
 CPUFeatures AA64MMFR2::GetCPUFeatures() const {
   CPUFeatures f;
   if (Get(kAT) >= 1) f.Combine(CPUFeatures::kUSCAT);
+  return f;
+}
+
+CPUFeatures AA64ZFR0::GetCPUFeatures() const {
+  // This register is only available with SVE, but reads-as-zero in its absence,
+  // so it's always safe to read it.
+  CPUFeatures f;
+  if (Get(kF64MM) >= 1) f.Combine(CPUFeatures::kSVEF64MM);
+  if (Get(kF32MM) >= 1) f.Combine(CPUFeatures::kSVEF32MM);
+  if (Get(kI8MM) >= 1) f.Combine(CPUFeatures::kSVEI8MM);
+  if (Get(kBF16) >= 1) f.Combine(CPUFeatures::kSVEBF16);
   return f;
 }
 
@@ -201,26 +251,45 @@ CPUFeatures CPU::InferCPUFeaturesFromOS(
        CPUFeatures::kSHA512,
        CPUFeatures::kSVE,
        CPUFeatures::kFHM,
-       // Bits 24-27
+       // Bits 24-31
        CPUFeatures::kDIT,
        CPUFeatures::kUSCAT,
        CPUFeatures::kRCpcImm,
        CPUFeatures::kFlagM,
-       // Bits 28-31
-       CPUFeatures::kNone,  // "ssbs"
-       CPUFeatures::kNone,  // "sb"
+       CPUFeatures::kSSBSControl,
+       CPUFeatures::kSB,
        CPUFeatures::kPAuth,
-       CPUFeatures::kPAuthGeneric};
-  static const size_t kFeatureBitCount =
-      sizeof(kFeatureBits) / sizeof(kFeatureBits[0]);
+       CPUFeatures::kPAuthGeneric,
+       // Bits 32-39
+       CPUFeatures::kDCCVADP,
+       CPUFeatures::kNone,  // "sve2"
+       CPUFeatures::kNone,  // "sveaes"
+       CPUFeatures::kNone,  // "svepmull"
+       CPUFeatures::kNone,  // "svebitperm"
+       CPUFeatures::kNone,  // "svesha3"
+       CPUFeatures::kNone,  // "svesm4"
+       CPUFeatures::kFrintToFixedSizedInt,
+       // Bits 40-47
+       CPUFeatures::kSVEI8MM,
+       CPUFeatures::kSVEF32MM,
+       CPUFeatures::kSVEF64MM,
+       CPUFeatures::kSVEBF16,
+       CPUFeatures::kI8MM,
+       CPUFeatures::kBF16,
+       CPUFeatures::kDGH,
+       CPUFeatures::kRNG,
+       // Bits 48+
+       CPUFeatures::kBTI};
 
-  unsigned long auxv = getauxval(AT_HWCAP);  // NOLINT(runtime/int)
+  uint64_t hwcap_low32 = getauxval(AT_HWCAP);
+  uint64_t hwcap_high32 = getauxval(AT_HWCAP2);
+  VIXL_ASSERT(IsUint32(hwcap_low32));
+  VIXL_ASSERT(IsUint32(hwcap_high32));
+  uint64_t hwcap = hwcap_low32 | (hwcap_high32 << 32);
 
-  // TODO: Also examine AT_HWCAP2.
-
-  VIXL_STATIC_ASSERT(kFeatureBitCount < (sizeof(auxv) * kBitsPerByte));
-  for (size_t i = 0; i < kFeatureBitCount; i++) {
-    if (auxv & (1UL << i)) features.Combine(kFeatureBits[i]);
+  VIXL_STATIC_ASSERT(ArrayLength(kFeatureBits) < 64);
+  for (size_t i = 0; i < ArrayLength(kFeatureBits); i++) {
+    if (hwcap & (UINT64_C(1) << i)) features.Combine(kFeatureBits[i]);
   }
 #endif  // VIXL_USE_LINUX_HWCAP
 
@@ -292,6 +361,27 @@ uint32_t CPU::GetCacheType() {
   // This will lead to a cache with 1 byte long lines, which is fine since
   // neither EnsureIAndDCacheCoherency nor the simulator will need this
   // information.
+  return 0;
+#endif
+}
+
+
+// Query the SVE vector length. This requires CPUFeatures::kSVE.
+int CPU::ReadSVEVectorLengthInBits() {
+#ifdef __aarch64__
+  uint64_t vl;
+  // To support compilers that don't understand `rdvl`, encode the value
+  // directly and move it manually.
+  __asm__(
+      "   .word 0x04bf5100\n"  // rdvl x0, #8
+      "   mov %[vl], x0\n"
+      : [vl] "=r"(vl)
+      :
+      : "x0");
+  VIXL_ASSERT(vl <= INT_MAX);
+  return static_cast<int>(vl);
+#else
+  VIXL_UNREACHABLE();
   return 0;
 #endif
 }

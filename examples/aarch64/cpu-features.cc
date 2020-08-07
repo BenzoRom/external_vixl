@@ -1,4 +1,4 @@
-// Copyright 2014, VIXL authors
+// Copyright 2020, VIXL authors
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -24,33 +24,30 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef VIXL_EXAMPLES_NON_CONST_VISITOR_H_
-#define VIXL_EXAMPLES_NON_CONST_VISITOR_H_
+#include "examples.h"
 
-#include "aarch64/decoder-aarch64.h"
-#include "aarch64/macro-assembler-aarch64.h"
+using namespace vixl;
+using namespace vixl::aarch64;
 
-class SwitchAddSubRegisterSources
-    : public vixl::aarch64::DecoderVisitorWithDefaults {
- public:
-  SwitchAddSubRegisterSources()
-      : vixl::aarch64::DecoderVisitorWithDefaults(kNonConstVisitor) {}
+// Demonstrate the use of VIXL's CPU feature detection, printing the features
+// that VIXL detects.
 
-  // Our visitor switches the register sources for some add and sub instructions
-  // (not all add and sub instructions).
+#ifndef TEST_EXAMPLES
+int main() {
+  // Simple native deployments should initialise CPU features using
+  // `InferFromOS()`. If not on an AArch64 host, this returns nothing.
+  std::cout << "==== CPUFeatures::InferFromOS() ====\n";
+  std::cout << CPUFeatures::InferFromOS() << "\n";
 
-  virtual void VisitAddSubShifted(const vixl::aarch64::Instruction* instr)
-      VIXL_OVERRIDE;
-};
+  // VIXL assumes support for FP, NEON and CRC32 by default. These features were
+  // implemented before the CPUFeatures mechanism.
+  std::cout << "==== CPUFeatures::AArch64LegacyBaseline() ====\n";
+  std::cout << CPUFeatures::AArch64LegacyBaseline() << "\n";
 
+  // Retrieve a list of all supported CPU features.
+  std::cout << "==== CPUFeatures::All() ====\n";
+  std::cout << CPUFeatures::All() << "\n";
 
-void GenerateNonConstVisitorTestCode(vixl::aarch64::MacroAssembler* masm);
-
-int64_t RunNonConstVisitorTestGeneratedCode(
-    const vixl::aarch64::Instruction* start_instr);
-
-void ModifyNonConstVisitorTestGeneratedCode(vixl::aarch64::Instruction* start,
-                                            vixl::aarch64::Instruction* end);
-
-
+  return 0;
+}
 #endif
